@@ -71,7 +71,8 @@ def run(
     output_dir: str,
     fname: str = None,
     nsteps: int = 8,
-    num_samples: int = 4,
+    num_samples: int = 128,
+    num_plot_samples: int = 4,
 ):
     """Save action-sensitivity metrics and a trajectory comparison plot."""
     checkpoint = Path(checkpoint)
@@ -126,17 +127,6 @@ def run(
     shuffled_error = torch.mean(
         (shuffled_states[:, :, 1:] - target_states[:, :, 1:]) ** 2
     )
-    metrics = {
-        "correct_action_latent_mse": float(correct_error),
-        "shuffled_action_latent_mse": float(shuffled_error),
-        "shuffled_over_correct_ratio": float(shuffled_error / correct_error),
-        "nsteps": nsteps,
-        "num_samples": x.shape[0],
-    }
-    (output_dir / "action_sanity_metrics.json").write_text(
-        json.dumps(metrics, indent=2)
-    )
-
     correct_xy = xy_head(correct_states).transpose(1, 2)
     shuffled_xy = xy_head(shuffled_states).transpose(1, 2)
     target_xy = locations[:, :, : nsteps + 1].transpose(1, 2)
@@ -144,7 +134,28 @@ def run(
     shuffled_xy = normalizer.unnormalize_location(shuffled_xy).cpu()
     target_xy = normalizer.unnormalize_location(target_xy).cpu()
 
-    figure, axes = plt.subplots(1, x.shape[0], figsize=(4 * x.shape[0], 4), squeeze=False)
+    correct_position_error = torch.mean((correct_xy - target_xy) ** 2)
+    shuffled_position_error = torch.mean((shuffled_xy - target_xy) ** 2)
+    metrics = {
+        "correct_action_latent_mse": float(correct_error),
+        "shuffled_action_latent_mse": float(shuffled_error),
+        "latent_shuffled_over_correct_ratio": float(shuffled_error / correct_error),
+        "correct_action_position_mse": float(correct_position_error),
+        "shuffled_action_position_mse": float(shuffled_position_error),
+        "position_shuffled_over_correct_ratio": float(
+            shuffled_position_error / correct_position_error
+        ),
+        "nsteps": nsteps,
+        "num_samples": x.shape[0],
+    }
+    (output_dir / "action_sanity_metrics.json").write_text(
+        json.dumps(metrics, indent=2)
+    )
+
+    plot_count = min(num_plot_samples, x.shape[0])
+    figure, axes = plt.subplots(
+        1, plot_count, figsize=(4 * plot_count, 4), squeeze=False
+    )
     for index, axis in enumerate(axes[0]):
         axis.plot(target_xy[index, :, 0], target_xy[index, :, 1], "k-o", label="GT")
         axis.plot(correct_xy[index, :, 0], correct_xy[index, :, 1], "g-o", label="Correct")
