@@ -1,55 +1,55 @@
 # Video JEPA: Bottom-Up First-Run Plan
 
-## Amaç
+## Goal
 
-Bu çalışmanın ana odağı Video JEPA'dır. I-JEPA yalnızca fikrin görsel temsil
-öğrenme kökenini açıklamak için kısa tutulacaktır.
+The main focus of this study is Video JEPA. I-JEPA is included only as brief
+background for the representation-learning idea.
 
-Bottom-up sıra:
+The bottom-up sequence is:
 
-1. Action kullanmadan video dinamiğini latent uzayda tahmin et (`video_jepa`).
-2. Eğitilmiş modelde tek ve çok adımlı gelecek latent tahminini incele.
-3. Ardından action bilgisini ekle (`ac_video_jepa`).
-4. Doğru action ile yanlış/karıştırılmış action'ın tahmin hatasını karşılaştır.
+1. Predict video dynamics in latent space without actions (`video_jepa`).
+2. Inspect one-step and multi-step future-latent predictions.
+3. Add action conditioning (`ac_video_jepa`).
+4. Compare prediction errors for correct and shuffled actions.
 
-İlk amaç benchmark yeniden üretmek değildir. Amaç, JEPA veri akışını kodda
-bulmak, küçük bir eğitimi çalıştırmak ve modelin gerçekten ne öğrendiğini
-gösteren birkaç kontrollü çıktı almaktır.
+The first goal is not benchmark reproduction. The goal is to trace the JEPA
+data flow in code, run a small training job, and collect controlled evidence of
+what the model learned.
 
-> Terminoloji notu: Bu repodaki Moving MNIST `video_jepa` örneği, Meta'nın
-> orijinal V-JEPA mimarisinin küçük birebir reprodüksiyonu değildir. Maskeli
-> spatiotemporal prediction ve EMA target encoder yerine, JEPA prensibini
-> gelecekteki video latent'ini tahmin ederek gösteren sade bir eğitim örneğidir.
+> Terminology note: the Moving MNIST `video_jepa` example in this repository is
+> not a small reproduction of Meta's original V-JEPA architecture. It is an
+> educational future-latent prediction example. It does not implement the
+> original masked spatiotemporal prediction and EMA target-encoder setup.
 
 ---
 
-## Deney 1 — State-Only Video JEPA (Ana Run)
+## Experiment 1 — State-Only Video JEPA (Primary Run)
 
-### Soru
+### Question
 
-Model, yalnızca geçmiş video karelerinden gelecekteki durumun temsilini
-tahmin edebiliyor mu?
+Can the model predict the representation of a future state using only past
+video frames?
 
 ```text
-geçmiş kareler
+past frames
     |
     v
 encoder (ResNet5)
     |
     v
-geçmiş latent'ler
+past latents
     |
     v
 state-only predictor (ResUNet)
     |
     v
-tahmin edilen gelecek latent
+predicted future latent
     |
     v
-gerçek gelecek karenin latent'i ile karşılaştırma
+compare with the latent of the real future frame
 ```
 
-Basitleştirilmiş ifade:
+Simplified computation:
 
 ```text
 z_t       = encoder(o_t)
@@ -58,46 +58,47 @@ z_pred    = predictor(previous_latents)
 loss_pred = distance(z_pred, z_target)
 ```
 
-Bu örnekte ayrı bir teacher/EMA target encoder yoktur. Gelecek hedefi de aynı
-encoder ile temsil edilir.
+This example has no separate teacher or EMA target encoder. The same encoder
+also produces the future target representation.
 
-### Veri
+### Data
 
-- Dataset: Moving MNIST
-- İki rakam görüntü içinde hareket eder ve sınırlardan seker.
-- Repo ilk kullanımda yaklaşık 800 MB veri indirir.
-- Kod varsayılan olarak 9.000 train ve 1.000 validation videosu kullanır.
-- Her örnek bir video dizisi, digit-location hedefi ve değerlendirme bilgisidir.
+- Dataset: Moving MNIST.
+- Two digits move inside an image and bounce at the boundaries.
+- The repository downloads about 800 MB on first use.
+- The source is split into 9,000 training and 1,000 validation sequences.
+- Each sequence is split temporally into two shorter clips, so the DataLoaders
+  see 18,000 training and 2,000 validation clips by default.
 
-### Model ve loss
+### Model and objectives
 
-- Encoder: `ResNet5`
-- Predictor: `ResUNet`, iki latent karelik context kullanır
-- Projector: MLP
-- Prediction loss: tahmin edilen ve gerçek gelecek latent arasında MSE
+- Encoder: `ResNet5`.
+- Predictor: `ResUNet` with two latent frames of context.
+- Projector: MLP.
+- Prediction loss: MSE between predicted and target future latents.
 - VC regularizer:
-  - variance/std loss collapse'ı önler
-  - covariance loss redundant latent boyutlarını azaltır
-- Yardımcı evaluation head'leri:
-  - pixel decoder
-  - digit-location detection head
+  - variance/std loss discourages collapse;
+  - covariance loss discourages redundant latent dimensions.
+- Auxiliary evaluation heads:
+  - pixel decoder;
+  - digit-location detection head.
 
-Toplam eğitimde JEPA loss yanında iki probe/decoder loss'u da optimize edilir.
-Bu head'ler latent rollout'u yorumlamak ve görselleştirmek içindir.
+The decoder and detection head are used to interpret and visualize latent
+rollouts. JEPA itself predicts representations rather than pixels.
 
-### İki seviyeli çalışma
+### Two-stage execution
 
 #### A. Smoke test
 
-Amaç yalnızca şunları doğrulamaktır:
+The smoke test only verifies that:
 
-- veri yükleniyor,
-- forward/backward çalışıyor,
-- loss finite,
-- GPU gerçekten kullanılıyor,
-- checkpoint yazılıyor.
+- data loads;
+- forward and backward passes run;
+- losses are finite;
+- the GPU is used;
+- a checkpoint is written.
 
-Gerçek bir tiny smoke run için train/validation subset desteği eklenmesi önerilir:
+Use the subset settings added to the Video JEPA config:
 
 ```yaml
 data:
@@ -105,82 +106,74 @@ data:
   val_size: 128
 ```
 
-Subset desteği eklenmeden config'deki batch size veya epoch sayısını azaltmak,
-bir epoch içindeki 9.000 train videosunu azaltmaz.
-
-Hedef smoke ayarı:
+Target smoke configuration:
 
 ```text
 train_size=512
 val_size=128
 batch_size=32
-model.steps=1 veya 2
+model.steps=1
 epochs=1
-wandb=false
+wandb=False
 ```
 
 #### B. Mini learning run
 
-Smoke test geçtikten sonra:
+After the smoke test succeeds:
 
 ```text
-train_size=2.000–4.000
+train_size=2,000–4,000
 val_size=256–512
-batch_size=32 veya 64
+batch_size=32 or 64
 model.steps=2
 epochs=5–10
-wandb=false (ilk denemede)
+wandb=False
 ```
 
-Bu aşamada “model öğrendi” diyebilmek için yalnız son loss'a değil, aşağıdaki
-karşılaştırmalara bakılacaktır:
+Evidence of learning should include:
 
-- başlangıç ve bitiş prediction loss'u,
-- train ve validation prediction loss'u,
-- untrained ve trained modelin aynı video üzerindeki rollout'u,
-- kısa horizon ve daha uzun horizon hatası.
+- initial versus final prediction loss;
+- training versus validation metrics;
+- decoded rollout from a trained model;
+- error as the prediction horizon grows.
 
-### Mevcut kodla başlangıç komutu
-
-Subset desteği eklenmeden, tam 9.000 örneklik dataset üzerinde kısa çalışma:
+### Colab command
 
 ```bash
 uv run python -m examples.video_jepa.main \
   --fname examples/video_jepa/cfgs/default.yaml \
-  logging.log_wandb=false \
+  --folder /content/eb_jepa_runs/video_mini \
+  logging.log_wandb=False \
+  logging.log_every=1 \
+  data.train_size=4000 \
+  data.val_size=512 \
+  data.batch_size=64 \
   data.num_workers=2 \
-  data.batch_size=32 \
   model.steps=2 \
-  optim.epochs=3
+  optim.epochs=5
 ```
 
-Colab'de GPU belleği uygunsa `batch_size=64` daha hızlı olabilir. OOM oluşursa
-önce `batch_size=32`, sonra `16` denenmelidir.
+If a T4 runs out of memory, reduce the batch size to 32 and then 16.
 
-### Kaydedilecek çıktılar
+### Outputs to retain
 
-- exact command ve kullanılan final config
-- GPU modeli (`nvidia-smi`)
-- epoch süresi ve toplam süre
-- train/validation prediction loss
-- VC loss bileşenleri
-- checkpoint
-- bir input video ve bir decoded rollout
-- tensor shape'leri:
-  - input video
-  - encoder latent'i
-  - predictor context'i
-  - predicted future latent
-  - target future latent
+- exact command and resolved config;
+- GPU model (`nvidia-smi`);
+- epoch and total runtime;
+- training and validation metrics;
+- checkpoint;
+- loss plot;
+- ground-truth / predicted-rollout / detection GIF;
+- tensor shapes for input, encoded state, and predicted state.
 
 ---
 
-## Deney 2 — Action-Conditioned Video JEPA (Kısa Devam Run'ı)
+## Experiment 2 — Action-Conditioned Video JEPA
 
-### Soru
+### Question
 
-Gelecek yalnızca mevcut görüntüye değil, seçilen action'a bağlı olduğunda model
-action bilgisini doğru biçimde kullanıyor mu?
+When the future depends on an external action, does the model use that action
+correctly?
 
 ```text
 observation o_t
@@ -205,33 +198,34 @@ pred     = predictor(z_t, a_t)
 pred_err = distance(pred, z_next)
 ```
 
-Burada da ayrı bir target/teacher encoder yoktur.
+This example also has no separate target or teacher encoder.
 
-### Veri ve loss
+### Data and objectives
 
-- Dataset/environment: runtime'da üretilen Two Rooms
-- Observation: agent ve duvar görüntüsü
-- Action: iki boyutlu hareket vektörü
-- Encoder output: global 512-boyutlu latent
-- Predictor: action alan GRU
-- Loss:
-  - latent prediction
-  - variance
-  - covariance
-  - temporal similarity
-  - inverse dynamics (IDM)
+- Dataset/environment: Two Rooms, generated online.
+- Observation: agent and wall image.
+- Action: two-dimensional movement vector.
+- Encoder output: global 512-dimensional latent.
+- Predictor: action-conditioned GRU.
+- Objectives:
+  - latent prediction;
+  - variance;
+  - covariance;
+  - temporal similarity;
+  - inverse dynamics (IDM).
 
-### Minimal run
+### Small run
 
-Planning evaluation, W&B ve compile ilk eğitimde kapatılır:
+Planning evaluation, W&B, and compilation are disabled for the first run:
 
 ```bash
 uv run python -m examples.ac_video_jepa.main \
   --fname examples/ac_video_jepa/cfgs/train.yaml \
-  logging.log_wandb=false \
-  meta.load_model=false \
-  meta.enable_plan_eval=false \
-  model.compile=false \
+  --folder /content/eb_jepa_runs/ac_video_mini \
+  logging.log_wandb=False \
+  meta.load_model=False \
+  meta.enable_plan_eval=False \
+  model.compile=False \
   training.dtype=float16 \
   data.size=2048 \
   data.val_size=128 \
@@ -241,148 +235,134 @@ uv run python -m examples.ac_video_jepa.main \
   optim.epochs=3
 ```
 
-Bu ikinci run'ın amacı planning başarı oranı üretmek değildir. Amaç yalnızca
-action-conditioned prediction mekanizmasını doğrulamaktır.
+`float16` is selected for a T4. `bfloat16` may be tested on newer GPUs.
 
-T4 üzerinde `bfloat16` yerine `float16` seçilmiştir. Daha yeni bir GPU verilirse
-`bfloat16` ayrıca denenebilir.
+### Action-sensitivity check
 
-### Asıl sanity check
-
-Sadece iki farklı action'ın farklı prediction vermesi yeterli değildir;
-eğitilmemiş bir ağ da bunu yapabilir. Bunun yerine aynı batch üzerinde action'lar
-karıştırılır:
+Different actions producing different outputs is not sufficient: an untrained
+network can also do that. Instead, shuffle actions across the batch:
 
 ```text
 error_correct = distance(P(z_t, a_t),        z_(t+1))
 error_wrong   = distance(P(z_t, shuffled_a), z_(t+1))
 ```
 
-Beklenti:
+Expected result:
 
 ```text
 error_correct < error_wrong
 ```
 
-Bu fark batch ortalamasıyla ve mümkünse birkaç farklı seed ile raporlanmalıdır.
+The notebook also plots ground-truth, correct-action, and shuffled-action
+trajectories.
 
 ---
 
-## Google Colab Ortamı
+## Google Colab Environment
 
-### Önerilen runtime
+### Recommended runtime
 
-- Runtime type: Python 3
-- Hardware accelerator: NVIDIA GPU
-- Minimum pratik hedef: T4 sınıfı GPU, yaklaşık 15 GB VRAM
-- Daha hızlı seçenek: L4/A100 gibi premium GPU (erişim garanti değildir)
-- TPU gerekli değildir; repo PyTorch/CUDA akışına göre yazılmıştır
-- High-RAM runtime ilk denemede gerekli değildir
+- Runtime: Python 3.
+- Hardware accelerator: NVIDIA GPU.
+- Practical minimum: T4-class GPU with about 15 GB VRAM.
+- Faster option: L4 or A100 when available.
+- TPU is not required.
+- A high-RAM runtime is not required for the first run.
 
-Colab GPU tipi, kullanım kotası ve oturum süresi dinamik olduğu için notebook
-başında donanım mutlaka kaydedilmelidir:
+Record the assigned hardware at the beginning:
 
 ```bash
 !nvidia-smi
 !python --version
 ```
 
-Python sürümü proje gereksinimi olan 3.12 ile uyuşmazsa `uv` üzerinden Python
-3.12 kurulup proje o ortamda çalıştırılmalıdır.
+### VS Code workflow
 
-### Kurulum hücreleri
+Use the official Google Colab extension for VS Code:
 
-```python
-from google.colab import drive
-drive.mount('/content/drive')
+```text
+Open notebooks/video_jepa_colab.ipynb
+Select Kernel
+Colab
+New Colab Server (or Auto Connect)
+GPU
 ```
+
+The notebook clones this fork:
+
+```text
+https://github.com/Furkan-Coban/eb_jepa.git
+```
+
+The local workspace and Colab VM are different filesystems. Push local changes
+to GitHub, then pull or clone them inside Colab.
+
+### Installation
 
 ```bash
 %cd /content
-!git clone https://github.com/facebookresearch/eb_jepa.git
+!git clone https://github.com/Furkan-Coban/eb_jepa.git
 %cd /content/eb_jepa
 !pip -q install uv
 !uv python install 3.12
 !uv sync
 ```
 
-Komutlar notebook hücresinde `uv run python ...` biçiminde çalıştırılmalıdır.
-İlk `uv sync` PyTorch ve diğer bağımlılıkları indireceği için sonraki çalışmalara
-göre daha uzun sürer.
+Run project commands through `uv run python ...`.
 
-### Dataset ve checkpoint kalıcılığı
+### Persistence
 
-Colab VM'i geçicidir; bağlantı kesilince `/content` silinebilir.
+The Colab VM is temporary. `/content` may be deleted when the runtime ends.
 
-- Moving MNIST dosyasını ilk indirmeden sonra Google Drive'a kopyala.
-- Deney sonunda `config.yaml`, log, görsel ve checkpoint klasörünü Drive'a kopyala.
-- Eğitimi doğrudan Drive üzerinde çalıştırmak çok sayıda küçük yazma nedeniyle
-  yavaşlayabilir. Eğitim `/content` altında, sonuç kopyalama en sonda yapılmalıdır.
+- Train under `/content` for better I/O performance.
+- Cache Moving MNIST in Google Drive after its first download.
+- Copy configs, metrics, images, and checkpoints to Drive after training.
 
-Örnek:
-
-```bash
-!mkdir -p /content/drive/MyDrive/eb_jepa_artifacts
-!cp -r /content/eb_jepa/checkpoints/video_jepa \
-  /content/drive/MyDrive/eb_jepa_artifacts/
-```
-
-### Tahmini süreler
-
-Aşağıdaki değerler ölçüm değil, T4 sınıfı GPU için planlama aralığıdır. Colab'ın
-verdiği GPU, disk/ağ hızı, batch size ve validation sıklığı süreyi değiştirebilir.
-
-| İş | T4 tahmini | L4/A100 tahmini |
-|---|---:|---:|
-| Repo + environment kurulumu | 5–15 dk | 5–15 dk |
-| Moving MNIST ilk indirme (~800 MB) | 2–15 dk | 2–15 dk |
-| Video JEPA subset smoke run | 2–6 dk | 1–4 dk |
-| Video JEPA mini run (2k–4k, 5 epoch) | 15–45 dk | 8–25 dk |
-| Video JEPA mevcut tam dataset, 3 epoch | 20–60 dk | 10–35 dk |
-| AC-JEPA smoke/mini run (2k, 3 epoch) | 10–30 dk | 5–20 dk |
-| Prediction + shape + sanity check | 2–10 dk | 2–8 dk |
-
-İlk epoch gerçek süre ölçümü için kullanılmalıdır:
+The notebook uses:
 
 ```text
-tahmini toplam eğitim süresi
-  = ilk epoch süresi × kalan epoch sayısı
+MyDrive/eb_jepa_data/
+MyDrive/eb_jepa_artifacts/
 ```
 
-İlk epoch veri indirme, CUDA warm-up ve cache nedeniyle biraz daha yavaş olabilir.
+### Planning-time estimates
 
-### Colab Free yeterli mi?
+These are planning ranges, not measured benchmarks. Hardware assignment,
+network speed, batch size, and validation frequency can change them.
 
-Bu küçültülmüş deneyler için çoğu durumda evet. Ancak ücretsiz GPU erişimi,
-GPU modeli ve kullanım kotası garanti değildir; runtime beklenmedik biçimde
-kapanabilir. Bu yüzden her epoch checkpoint almak ve sonuçları Drive'a kopyalamak
-gereklidir. Premium Colab ancak:
+| Task | T4 estimate | L4/A100 estimate |
+|---|---:|---:|
+| Repository and environment setup | 5–15 min | 5–15 min |
+| First Moving MNIST download | 2–15 min | 2–15 min |
+| Video JEPA subset smoke test | 2–6 min | 1–4 min |
+| Video JEPA mini run, 2k–4k clips, 5 epochs | 15–45 min | 8–25 min |
+| AC-JEPA mini run, 2k samples, 3 epochs | 10–30 min | 5–20 min |
+| Prediction and visual sanity checks | 2–10 min | 2–8 min |
 
-- ücretsiz GPU verilmiyorsa,
-- oturum sürekli kesiliyorsa,
-- full dataset veya daha uzun sweep yapılacaksa
+Use the first epoch as the runtime estimate for the remaining epochs. The first
+epoch may be slower because of downloading, CUDA warm-up, and caching.
 
-gerekli hâle gelir. İlk smoke ve mini run için doğrudan ücretli plana geçmek
-zorunlu değildir.
+### Is Colab Free sufficient?
+
+Usually yes for these reduced experiments. GPU access, GPU type, and usage quota
+are not guaranteed, so checkpoint each epoch and copy final artifacts to Drive.
+A paid tier becomes useful only if free GPU access is unavailable, sessions are
+repeatedly interrupted, or larger runs and sweeps are required.
 
 ---
 
-## Hocaya Sunulacak Kısa Sonuç
+## Short Research Summary
 
-Sunumun omurgası:
+1. JEPA predicts in representation space rather than generating pixels.
+2. State-only Video JEPA predicts future latents from past frames.
+3. Representation regularization discourages collapse.
+4. Action-conditioned JEPA extends the transition to
+   `state + action -> next state`.
+5. The decoded video rollout and correct-versus-shuffled action check make the
+   mechanisms observable.
 
-1. JEPA piksel üretmek yerine latent uzayda tahmin yapar.
-2. State-only Video JEPA geçmiş karelerden gelecekteki latent'i tahmin eder.
-3. Prediction objective tek başına collapse riski taşıdığı için temsil
-   regularization'ı kullanılır.
-4. Action-conditioned model aynı fikri `state + action -> next state` biçimine
-   genişletir.
-5. Video run'ında trained/untrained rollout; action-conditioned run'da doğru ve
-   shuffled action hatası mekanizmayı somutlaştırır.
-
-Bu çalışma orijinal V-JEPA benchmark reprodüksiyonu olarak değil, V-JEPA/JEPA
-mekanizmasını kodda izleyen ve küçük ölçekte doğrulayan bottom-up bir inceleme
-olarak sunulmalıdır.
+Present this work as a bottom-up inspection and small-scale validation of the
+JEPA/V-JEPA mechanism, not as reproduction of the original V-JEPA benchmark.
 
 ---
 
@@ -390,24 +370,25 @@ olarak sunulmalıdır.
 
 ### Video JEPA
 
-- [ ] Colab GPU ve environment doğrulandı
-- [ ] smoke run tamamlandı
-- [ ] mini learning run tamamlandı
-- [ ] loss'lar ve epoch süreleri kaydedildi
-- [ ] checkpoint Drive'a kopyalandı ve yeniden yüklendi
-- [ ] bir future-latent prediction çalıştı
-- [ ] trained/untrained rollout karşılaştırıldı
-- [ ] önemli tensor shape'leri kaydedildi
+- [ ] Colab GPU and environment verified.
+- [ ] Smoke run completed.
+- [ ] Mini learning run completed.
+- [ ] Metrics and runtimes recorded.
+- [ ] Checkpoint copied to Drive.
+- [ ] Future-latent prediction executed.
+- [ ] Decoded rollout inspected.
+- [ ] Important tensor shapes recorded.
 
 ### Action-Conditioned JEPA
 
-- [ ] küçük eğitim tamamlandı
-- [ ] checkpoint yeniden yüklendi
-- [ ] `observation + action -> future latent` çalıştı
-- [ ] correct-action ve shuffled-action error karşılaştırıldı
+- [ ] Small training run completed.
+- [ ] Checkpoint loaded.
+- [ ] `observation + action -> future latent` executed.
+- [ ] Correct-action and shuffled-action errors compared.
+- [ ] Trajectory comparison inspected.
 
-### Anlatım
+### Explanation
 
-- [ ] state-only ve action-conditioned veri akışını açıklayabiliyorum
-- [ ] collapse regularizer'larının neden gerektiğini açıklayabiliyorum
-- [ ] bu repo örneği ile orijinal V-JEPA arasındaki farkı doğru ifade edebiliyorum
+- [ ] I can explain the state-only and action-conditioned data flows.
+- [ ] I can explain why collapse regularizers are needed.
+- [ ] I can distinguish this educational example from the original V-JEPA.

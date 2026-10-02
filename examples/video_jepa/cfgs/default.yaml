@@ -9,6 +9,8 @@ data:
   dataset: moving_mnist
   batch_size: 64
   num_workers: 4
+  train_size: null  # null uses all clips; set e.g. 512 for a smoke test
+  val_size: null    # null uses all clips; set e.g. 128 for a smoke test
 
 model:
   # Encoder (ResNet5)

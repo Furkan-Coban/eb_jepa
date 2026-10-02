@@ -5,6 +5,7 @@ Train a self-supervised video prediction model on Moving MNIST using
 Joint Embedding Predictive Architecture (JEPA) with VC regularization.
 """
 
+import json
 from pathlib import Path
 
 import fire
@@ -91,6 +92,8 @@ def run(
         folder_name = exp_dir.name  # e.g., "resnet_std10.0_cov100.0_seed1"
         exp_name = folder_name.rsplit("_seed", 1)[0]  # e.g., "resnet_std10.0_cov100.0"
 
+    OmegaConf.save(cfg, exp_dir / "config.yaml")
+
     wandb_run = setup_wandb(
         project="eb_jepa",
         config={"example": "video_jepa", **OmegaConf.to_container(cfg, resolve=True)},
@@ -103,8 +106,10 @@ def run(
     )
 
     # Load datasets
-    train_set = MovingMNISTDet(split="train")
-    val_set = MovingMNISTDet(split="val")
+    train_set = MovingMNISTDet(
+        split="train", limit=cfg.data.get("train_size")
+    )
+    val_set = MovingMNISTDet(split="val", limit=cfg.data.get("val_size"))
     train_loader = DataLoader(
         train_set,
         batch_size=cfg.data.batch_size,
@@ -171,6 +176,10 @@ def run(
         ckpt_info = load_checkpoint(ckpt_path, jepa, optimizer, device=device)
         start_epoch = ckpt_info.get("epoch", 0)
         global_step = ckpt_info.get("step", 0)
+        if "pixel_decoder_state_dict" in ckpt_info:
+            pixel_decoder.head.load_state_dict(ckpt_info["pixel_decoder_state_dict"])
+        if "detection_head_state_dict" in ckpt_info:
+            detection_head.head.load_state_dict(ckpt_info["detection_head_state_dict"])
 
     # Training loop
     logger.info(f"Starting training for {cfg.optim.epochs} epochs...")
@@ -217,7 +226,13 @@ def run(
         # Validation and logging
         if epoch % cfg.logging.log_every == 0:
             val_logs = validation_loop(
-                val_loader, jepa, detection_head, pixel_decoder, cfg.model.steps, device
+                val_loader,
+                jepa,
+                detection_head,
+                pixel_decoder,
+                cfg.model.steps,
+                device,
+                make_videos=wandb_run is not None,
             )
 
             train_metrics = {
@@ -232,6 +247,14 @@ def run(
                 train_metrics[f"train/{k}"] = float(v)
 
             all_metrics = {**train_metrics, **val_logs}
+
+            scalar_metrics = {
+                key: value
+                for key, value in all_metrics.items()
+                if isinstance(value, (int, float))
+            }
+            with open(exp_dir / "metrics.jsonl", "a") as f:
+                f.write(json.dumps(scalar_metrics) + "\n")
 
             if wandb_run:
                 import wandb
@@ -256,6 +279,8 @@ def run(
             optimizer=optimizer,
             epoch=epoch,
             step=global_step,
+            pixel_decoder_state_dict=pixel_decoder.head.state_dict(),
+            detection_head_state_dict=detection_head.head.state_dict(),
         )
         if epoch % cfg.logging.save_every == 0 and epoch > 0:
             save_checkpoint(
@@ -264,6 +289,8 @@ def run(
                 optimizer=optimizer,
                 epoch=epoch,
                 step=global_step,
+                pixel_decoder_state_dict=pixel_decoder.head.state_dict(),
+                detection_head_state_dict=detection_head.head.state_dict(),
             )
 
     if wandb_run:

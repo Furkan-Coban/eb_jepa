@@ -46,10 +46,12 @@ def return_bbox(img):
 
 
 class MovingMNIST(Dataset):
-    def __init__(self, split=None):
+    def __init__(self, split=None, limit=None):
         """
         Args:
             split (str): train or val
+            limit (int, optional): Maximum number of returned video clips after
+                temporal splitting. Useful for smoke tests and small experiments.
 
         Returns:
             video: [C, T, H, W] - greyscale video frames
@@ -69,6 +71,10 @@ class MovingMNIST(Dataset):
         self.data = np.reshape(
             data, [data.shape[0] * 2, data.shape[1] // 2, data.shape[2], data.shape[3]]
         )
+        if limit is not None:
+            if limit <= 0:
+                raise ValueError(f"limit must be positive, got {limit}")
+            self.data = self.data[: min(limit, len(self.data))]
 
     def __len__(self):
         return len(self.data)
@@ -79,18 +85,19 @@ class MovingMNIST(Dataset):
 
 
 class MovingMNISTDet(MovingMNIST):
-    def __init__(self, transform=None, split=None, map_size=8):
+    def __init__(self, transform=None, split=None, map_size=8, limit=None):
         """
         Args:
             transform (callable, optional): Optional transform to be applied on a sample.
             split (str): train or val
             map_size (int): size of map to predict positions over
+            limit (int, optional): Maximum number of returned video clips.
 
         Returns:
             video: [C, T, H, W] - greyscale video frames
             digit_location: [T, map_size, map_size] - Coarse binary heatmap for digit locations
         """
-        super().__init__(split)
+        super().__init__(split, limit=limit)
         self.transform = transform
 
         # Precompute digit locations for all entries

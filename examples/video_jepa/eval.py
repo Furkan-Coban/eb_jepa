@@ -113,7 +113,15 @@ def visualize_videos(
 
 # Run full loop over validation set and compute metrics
 @torch.inference_mode()
-def validation_loop(val_loader, jepa, detection_head, pixel_decoder, steps, device):
+def validation_loop(
+    val_loader,
+    jepa,
+    detection_head,
+    pixel_decoder,
+    steps,
+    device,
+    make_videos=True,
+):
 
     # Set modules to eval mode
     jepa.eval()
@@ -151,13 +159,16 @@ def validation_loop(val_loader, jepa, detection_head, pixel_decoder, steps, devi
 
     # Aggregate val results and visualize last batch
     metrics = {k: float(np.mean(v)) for k, v in metrics.items()}
-    videos = visualize_videos(
-        batch, jepa, pixel_decoder, detection_head, num_samples=16
-    )
-    logs = {
-        **metrics,
-        "viz": [wandb.Video(video, fps=4, format="mp4") for video in videos],
-    }
+    logs = dict(metrics)
+    if make_videos:
+        videos = visualize_videos(
+            batch,
+            jepa,
+            pixel_decoder,
+            detection_head,
+            num_samples=min(16, batch["video"].shape[0]),
+        )
+        logs["viz"] = [wandb.Video(video, fps=4, format="mp4") for video in videos]
     print(metrics)
 
     # Set modules back to train mode
