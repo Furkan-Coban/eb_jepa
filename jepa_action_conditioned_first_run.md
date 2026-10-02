@@ -141,16 +141,16 @@ Evidence of learning should include:
 
 ```bash
 uv run python -m examples.video_jepa.main \
-  --fname examples/video_jepa/cfgs/default.yaml \
-  --folder /content/eb_jepa_runs/video_mini \
-  logging.log_wandb=False \
-  logging.log_every=1 \
-  data.train_size=4000 \
-  data.val_size=512 \
-  data.batch_size=64 \
-  data.num_workers=2 \
-  model.steps=2 \
-  optim.epochs=5
+  --fname=examples/video_jepa/cfgs/default.yaml \
+  --folder=/content/eb_jepa_runs/video_mini \
+  --logging.log_wandb=False \
+  --logging.log_every=1 \
+  --data.train_size=4000 \
+  --data.val_size=512 \
+  --data.batch_size=64 \
+  --data.num_workers=2 \
+  --model.steps=2 \
+  --optim.epochs=5
 ```
 
 If a T4 runs out of memory, reduce the batch size to 32 and then 16.
@@ -220,19 +220,19 @@ Planning evaluation, W&B, and compilation are disabled for the first run:
 
 ```bash
 uv run python -m examples.ac_video_jepa.main \
-  --fname examples/ac_video_jepa/cfgs/train.yaml \
-  --folder /content/eb_jepa_runs/ac_video_mini \
-  logging.log_wandb=False \
-  meta.load_model=False \
-  meta.enable_plan_eval=False \
-  model.compile=False \
-  training.dtype=float16 \
-  data.size=2048 \
-  data.val_size=128 \
-  data.batch_size=32 \
-  data.num_workers=2 \
-  model.nsteps=2 \
-  optim.epochs=3
+  --fname=examples/ac_video_jepa/cfgs/train.yaml \
+  --folder=/content/eb_jepa_runs/ac_video_mini \
+  --logging.log_wandb=False \
+  --meta.load_model=False \
+  --meta.enable_plan_eval=False \
+  --model.compile=False \
+  --training.dtype=float16 \
+  --data.size=2048 \
+  --data.val_size=128 \
+  --data.batch_size=32 \
+  --data.num_workers=2 \
+  --model.nsteps=2 \
+  --optim.epochs=3
 ```
 
 `float16` is selected for a T4. `bfloat16` may be tested on newer GPUs.
