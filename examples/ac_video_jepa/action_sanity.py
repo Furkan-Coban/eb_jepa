@@ -86,6 +86,13 @@ def run(
         env_name=cfg.data.env_name,
         cfg_data={**dict(cfg.data), "batch_size": max(num_samples, 4), "num_workers": 0},
     )
+    val_loader = torch.utils.data.DataLoader(
+        val_loader.dataset,
+        batch_size=num_samples,
+        shuffle=False,
+        num_workers=0,
+        drop_last=False,
+    )
     normalizer = val_loader.dataset.normalizer
     jepa, xy_head = build_models(cfg, data_config, normalizer, device)
     checkpoint_info = load_checkpoint(checkpoint, jepa, device=device)
